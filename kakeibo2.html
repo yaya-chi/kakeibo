@@ -64,6 +64,8 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,'Hiragino S
 
 .ni{width:100%;border:none;outline:none;text-align:right;font-size:13px;color:var(--t1);padding:10px 0;background:transparent;font-family:inherit}
 .ni::placeholder{color:#dde2ea}
+.ni-auto{color:var(--navy2)!important;font-weight:600!important;background:#f0f6ff!important;border-radius:4px;}
+.lbl-input{border-bottom:1px dashed var(--bdr);}
 .ni:focus{background:#f8fafc;border-radius:4px}
 
 /* 小計フッター */
@@ -153,14 +155,18 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,'Hiragino S
 
 <script>
 // ══ 定数 ══
-const INC  = ["給与","児童手当","ちぃちゃん"];          // 月次収入（実績のみ）
-const FIX  = ["住宅ローン","車ローン","教育ローン","電気代","ガソリン代","携帯代","光回線","保険代","コープ共済","コープ商品代","生活費","塾代"]; // 固定費（予算＋実績）
-const VAR  = ["カード支払い","外食費","その他"];          // 変動費（実績のみ）
-const SPE  = ["固定資産税","自動車税","車保険","住宅ローン（ボーナス）","車ローン（ボーナス）","教育ローン（ボーナス）"]; // 特別支出（予算＋実績）
-const BINC = ["ボーナス夏","ボーナス冬"];                // 特別収入（実績のみ）
+const INC  = ["給与","児童手当","ちぃちゃん"];
+const FIX  = ["住宅ローン","車ローン","教育ローン","電気代","水道代","ガソリン代","携帯代","光回線","保険代","コープ共済","コープ商品代","サブスク","生活費","塾代","習い事","警備代"];
+const VAR  = ["カード支払い","外食費","その他"];
+const FREE_COUNT = 3; // 自由入力行数
+const SPE  = ["固定資産税","自動車税","車保険","住宅ローン（ボーナス）","車ローン（ボーナス）","教育ローン（ボーナス）"];
+const BINC = ["ボーナス夏","ボーナス冬"];
 const MON  = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
 const ALL  = [...FIX,...VAR];
 const SKEY = 'kakeibo-v6';
+
+// カード支払いから引く固定費項目
+const CARD_DEDUCT = ["ガソリン代","光回線","電気代","水道代","塾代","習い事","サブスク"];
 
 const now = new Date();
 let Y = now.getFullYear(), M = now.getMonth(), TAB = 'monthly';
@@ -171,28 +177,47 @@ function emptyYear(){
   const fb = {}; FIX.forEach(k => fb[k] = "");
   const mo = {};
   for(let m = 0; m < 12; m++){
-    const d   = {}; FIX.forEach(k => d[k]   = {budget:"", actual:""});
-                    VAR.forEach(k => d[k]   = {actual:""});       // 変動費は実績のみ
-    const inc = {}; INC.forEach(k => inc[k] = {actual:""});       // 月次収入は実績のみ
-    mo[m] = {d, inc};
+    const d   = {};
+    FIX.forEach(k => d[k] = {budget:"", actual:""});
+    VAR.forEach(k => d[k] = {actual:""});
+    d["カード支払い"] = {actual:"", cardTotal:""};
+    // 自由入力行（項目名＋実績）
+    const free = [];
+    for(let i=0;i<FREE_COUNT;i++) free.push({label:"", actual:""});
+    const inc = {}; INC.forEach(k => inc[k] = {actual:""});
+    mo[m] = {d, inc, free};
   }
   const sp   = {}; SPE.forEach(k  => sp[k]   = {budget:"", actual:""});
-  const binc = {}; BINC.forEach(k => binc[k] = {actual:""});      // 特別収入は実績のみ
+  const binc = {}; BINC.forEach(k => binc[k] = {actual:""});
   return {fb, mo, sp, binc};
 }
 function yd(){ if(!DB[Y]) DB[Y] = emptyYear(); return DB[Y]; }
 
-// 旧データ補完
 function ensureMonth(m){
   const y = yd();
   if(!y.mo[m]) y.mo[m] = {d:{}, inc:{}};
-  FIX.forEach(k => { if(!y.mo[m].d[k])   y.mo[m].d[k]   = {budget:"", actual:""}; });
-  VAR.forEach(k => { if(!y.mo[m].d[k])   y.mo[m].d[k]   = {actual:""}; });
+  FIX.forEach(k => { if(!y.mo[m].d[k]) y.mo[m].d[k] = {budget:"", actual:""}; });
+  VAR.forEach(k => { if(!y.mo[m].d[k]) y.mo[m].d[k] = {actual:""}; });
+  if(!y.mo[m].d["カード支払い"]) y.mo[m].d["カード支払い"] = {actual:"", cardTotal:""};
+  if(y.mo[m].d["カード支払い"].cardTotal === undefined) y.mo[m].d["カード支払い"].cardTotal = "";
   if(!y.mo[m].inc) y.mo[m].inc = {};
-  INC.forEach(k  => { if(!y.mo[m].inc[k]) y.mo[m].inc[k] = {actual:""}; });
+  INC.forEach(k => { if(!y.mo[m].inc[k]) y.mo[m].inc[k] = {actual:""}; });
   if(!y.sp)   { y.sp = {};   SPE.forEach(k  => y.sp[k]   = {budget:"", actual:""}); }
   if(!y.binc) { y.binc = {}; BINC.forEach(k => y.binc[k] = {actual:""}); }
   BINC.forEach(k => { if(!y.binc[k]) y.binc[k] = {actual:""}; });
+  // 自由入力行の補完
+  if(!y.mo[m].free) y.mo[m].free = [];
+  while(y.mo[m].free.length < FREE_COUNT) y.mo[m].free.push({label:"", actual:""});
+}
+
+// カード実績を自動計算して保存
+function calcCard(){
+  ensureMonth(M);
+  const md = yd().mo[M].d;
+  const cardTotal = prs(md["カード支払い"].cardTotal);
+  const deduct = CARD_DEDUCT.reduce((s,k) => s + prs(md[k] ? md[k].actual : 0), 0);
+  const result = cardTotal - deduct;
+  md["カード支払い"].actual = result > 0 ? String(result) : "0";
 }
 
 // ══ ストレージ ══
@@ -214,9 +239,9 @@ const prs = s => { if(s === "" || s == null) return 0; return parseInt(String(s)
 const CB = {}; let CI = 0;
 function reg(fn){ const k = 'c'+(CI++); CB[k] = fn; return k; }
 
-// 入力欄（1列）
-function ni(val, cbk){
+function ni(val, cbk, readonly=false){
   const v = (val === "" || val == null) ? "" : fmt(val);
+  if(readonly) return `<input class="ni ni-auto" inputmode="numeric" value="${v}" placeholder="自動" readonly>`;
   return `<input class="ni" inputmode="numeric" value="${v}" placeholder="0" data-cb="${cbk}" oninput="onNI(this)">`;
 }
 function onNI(el){
@@ -224,6 +249,10 @@ function onNI(el){
   if(!/^\d*$/.test(raw)){ el.value = el.value.slice(0,-1); return; }
   el.value = raw === "" ? "" : Number(raw).toLocaleString('ja-JP');
   const f = CB[el.dataset.cb]; if(f) f(raw);
+}
+// テキスト入力ハンドラ（自由入力項目名）
+function onTI(el){
+  const f = CB[el.dataset.cb]; if(f) f(el.value);
 }
 
 // ══ ヘッダー ══
@@ -240,7 +269,6 @@ function renderHdr(){
 function chgYear(d){ Y += d; renderAll(); }
 function chgM(m){ M = m; renderAll(); }
 
-// ══ タブ ══
 function swTab(t, el){
   TAB = t;
   document.querySelectorAll('.tbtn').forEach(b => b.classList.remove('active'));
@@ -249,14 +277,11 @@ function swTab(t, el){
 }
 
 // ══ 月次入力 ══
-// 収入：実績のみ（2列）
-// 固定費：予算＋実績（3列）
-// 変動費：実績のみ（2列）
 function renderMonthly(){
   ensureMonth(M);
   const y = yd(), md = y.mo[M].d, inc = y.mo[M].inc;
 
-  // 収入（実績のみ）
+  // 収入（実績のみ・2列）
   let irows = '';
   INC.forEach(k => {
     const cbA = reg(v => { ensureMonth(M); yd().mo[M].inc[k].actual = v; updMT(); });
@@ -264,24 +289,55 @@ function renderMonthly(){
   });
   const iA = INC.reduce((s,k) => s + prs(inc[k].actual), 0);
 
-  // 固定費（予算＋実績）
+  // 固定費（予算＋実績・3列）
   let frows = '';
   FIX.forEach(k => {
     const cbB = reg(v => { ensureMonth(M); yd().mo[M].d[k].budget = v; updMT(); });
-    const cbA = reg(v => { ensureMonth(M); yd().mo[M].d[k].actual = v; updMT(); });
+    const cbA = reg(v => {
+      ensureMonth(M); yd().mo[M].d[k].actual = v;
+      // CARD_DEDUCTの項目が変わったらカード実績も再計算
+      if(CARD_DEDUCT.includes(k)){ calcCard(); updCardRow(); }
+      updMT();
+    });
     frows += `<div class="g3 dr"><div class="lbl">${k}</div>${ni(md[k].budget, cbB)}${ni(md[k].actual, cbA)}</div>`;
   });
   const fB = FIX.reduce((s,k) => s + prs(md[k].budget), 0);
   const fA = FIX.reduce((s,k) => s + prs(md[k].actual), 0);
 
-  // 変動費（実績のみ）
-  let vrows = '';
-  VAR.forEach(k => {
-    const cbA = reg(v => { ensureMonth(M); yd().mo[M].d[k].actual = v; updMT(); });
-    vrows += `<div class="g2 dr"><div class="lbl">${k}</div>${ni(md[k].actual, cbA)}</div>`;
+  // カード支払い
+  const cardData = md["カード支払い"];
+  const cbCardTotal = reg(v => {
+    ensureMonth(M);
+    yd().mo[M].d["カード支払い"].cardTotal = v;
+    calcCard(); updCardRow(); updMT();
   });
-  const vA = VAR.reduce((s,k) => s + prs(md[k].actual), 0);
-  const tA = fA + vA;
+  const cardRow = `
+    <div class="g3 dr" id="card-row">
+      <div class="lbl">カード支払い</div>
+      ${ni(cardData.cardTotal, cbCardTotal)}
+      ${ni(cardData.actual, null, true)}
+    </div>`;
+
+  // 外食費・その他（実績のみ）
+  const fixedVarRows = ["外食費","その他"].map(k => {
+    const cbA = reg(v => { ensureMonth(M); yd().mo[M].d[k].actual = v; updMT(); });
+    return `<div class="g2 dr"><div class="lbl">${k}</div>${ni(md[k].actual, cbA)}</div>`;
+  }).join('');
+
+  // 自由入力3行（項目名＋実績）
+  const freeData = y.mo[M].free;
+  const freeRows = freeData.map((row, i) => {
+    const cbLabel = reg(v => { ensureMonth(M); yd().mo[M].free[i].label = v; });
+    const cbAct   = reg(v => { ensureMonth(M); yd().mo[M].free[i].actual = v; updMT(); });
+    const labelInput = `<input class="ni lbl-input" type="text" value="${row.label||''}" placeholder="項目名" data-cb="${cbLabel}" oninput="onTI(this)" style="text-align:left;font-size:12px;color:var(--t2)">`;
+    return `<div class="g2 dr">${labelInput}${ni(row.actual, cbAct)}</div>`;
+  }).join('');
+
+  // 変動費合計（VAR + free行）
+  const varA  = VAR.reduce((s,k) => s + prs(md[k].actual), 0);
+  const freeA = freeData.reduce((s,r) => s + prs(r.actual), 0);
+  const vA    = varA + freeA;
+  const tA    = fA + vA;
 
   return `
     <div class="sec-title">収入</div>
@@ -299,16 +355,35 @@ function renderMonthly(){
     </div>
 
     <div class="sec-title">変動費</div>
+    <div class="info-box" style="margin-bottom:8px">
+      <p>💳 カード金額を入力すると、固定費（ガソリン代・光回線・電気代・水道代・塾代・習い事・サブスク）を差し引いた金額が実績に自動反映されます。</p>
+    </div>
     <div class="card">
+      <div class="g3 th"><div>項目</div><div>金額</div><div>実績</div></div>
+      ${cardRow}
+    </div>
+    <div class="card" style="margin-top:4px">
       <div class="g2 th"><div>項目</div><div>実績</div></div>
-      ${vrows}
+      ${fixedVarRows}
+      ${freeRows}
       <div class="g2 strow"><span class="sl">小計</span><span class="sv">${vA ? fmt(vA) : '—'}</span></div>
     </div>
 
     <div class="mtcard" id="mtcard">${mtHTML(iA, fB, tA)}</div>`;
 }
 
-// 月合計バナー：収入実績 / 固定費予算 / 支出実績 / 収支差引実績
+function updCardRow(){
+  ensureMonth(M);
+  const cardData = yd().mo[M].d["カード支払い"];
+  const row = document.getElementById('card-row');
+  if(!row) return;
+  const inputs = row.querySelectorAll('input');
+  if(inputs[1]){
+    const v = cardData.actual;
+    inputs[1].value = (v === "" || v == null) ? "" : fmt(v);
+  }
+}
+
 function mtHTML(iA, fB, tA){
   const netA = iA - tA;
   const aC = netA >= 0 ? 'save' : 'over';
@@ -324,14 +399,16 @@ function mtHTML(iA, fB, tA){
 function updMT(){
   ensureMonth(M);
   const md = yd().mo[M].d, inc = yd().mo[M].inc;
-  const iA = INC.reduce((s,k) => s + prs(inc[k].actual), 0);
-  const fB = FIX.reduce((s,k) => s + prs(md[k].budget), 0);
-  const tA = ALL.reduce((s,k) => s + prs(md[k].actual), 0);
-  const el = document.getElementById('mtcard');
+  const iA   = INC.reduce((s,k) => s + prs(inc[k].actual), 0);
+  const fB   = FIX.reduce((s,k) => s + prs(md[k].budget), 0);
+  const varA = ALL.reduce((s,k) => s + prs(md[k].actual), 0);
+  const freeA = (yd().mo[M].free||[]).reduce((s,r) => s + prs(r.actual), 0);
+  const tA   = varA + freeA;
+  const el   = document.getElementById('mtcard');
   if(el) el.innerHTML = mtHTML(iA, fB, tA);
 }
 
-// ══ 基本額タブ（固定費のみ：予算設定） ══
+// ══ 基本額タブ ══
 function renderBase(){
   const fb = yd().fb || {};
   let rows = '';
@@ -351,14 +428,11 @@ function renderBase(){
     </div>`;
 }
 
-// ══ 特別タブ（支出：予算＋実績 ／ 収入：実績のみ） ══
+// ══ 特別収支タブ ══
 function renderSpecial(){
-  ensureMonth(0); // binc補完のため
-  const y = yd();
-  const sp = y.sp || {};
-  const binc = y.binc || {};
+  ensureMonth(0);
+  const y = yd(), sp = y.sp || {}, binc = y.binc || {};
 
-  // 特別収入（実績のみ）
   let birows = '';
   BINC.forEach(k => {
     const cbA = reg(v => { yd().binc[k].actual = v; });
@@ -366,7 +440,6 @@ function renderSpecial(){
   });
   const biA = BINC.reduce((s,k) => s + prs(binc[k].actual), 0);
 
-  // 特別支出（予算＋実績）
   let sprows = '';
   SPE.forEach(k => {
     const cbB = reg(v => { yd().sp[k].budget = v; });
@@ -375,7 +448,6 @@ function renderSpecial(){
   });
   const spB = SPE.reduce((s,k) => s + prs(sp[k].budget), 0);
   const spA = SPE.reduce((s,k) => s + prs(sp[k].actual), 0);
-  const spD = spB - spA;
 
   return `
     <div class="sec-title">特別収入（年間）</div>
@@ -384,14 +456,12 @@ function renderSpecial(){
       ${birows}
       <div class="g2 strow"><span class="sl">合計</span><span class="sv">${biA ? fmt(biA) : '—'}</span></div>
     </div>
-
     <div class="sec-title">特別支出（年間）</div>
     <div class="card">
       <div class="g3 th"><div>項目</div><div>予算</div><div>実績</div></div>
       ${sprows}
       <div class="g3 strow"><span class="sl">合計</span><span class="sv">${spB ? fmt(spB) : '—'}</span><span class="sv ${spA>spB&&spB?'over':''}">${spA ? fmt(spA) : '—'}</span></div>
     </div>
-
     <div class="scard" style="margin-top:10px">
       <h3>特別 収支差引</h3>
       <div class="srow"><span class="sk">特別収入（実績）</span><span class="vv">${biA ? fmt(biA) : '—'}</span></div>
@@ -403,8 +473,6 @@ function renderSpecial(){
 // ══ 集計タブ ══
 function renderSummary(){
   const y = yd();
-
-  // 当月
   ensureMonth(M);
   const inc = y.mo[M].inc, md = y.mo[M].d;
   const miA = INC.reduce((s,k) => s + prs(inc[k].actual), 0);
@@ -414,7 +482,6 @@ function renderSummary(){
   const tA  = fA + vA;
   const mNet = miA - tA;
 
-  // 年間累計（1〜M+1月）
   let ycIA=0, ycFB=0, ycFA=0, ycVA=0;
   for(let m = 0; m <= M; m++){
     ensureMonth(m);
@@ -422,17 +489,15 @@ function renderSummary(){
     INC.forEach(k => { ycIA += prs(ic[k].actual); });
     FIX.forEach(k => { ycFB += prs(d[k].budget); ycFA += prs(d[k].actual); });
     VAR.forEach(k => { ycVA += prs(d[k].actual); });
+    (y.mo[m].free||[]).forEach(r => { ycVA += prs(r.actual); });
   }
-  const ycTA  = ycFA + ycVA;
-  const ycNet = ycIA - ycTA;
+  const ycTA = ycFA + ycVA, ycNet = ycIA - ycTA;
 
-  // 特別
   const binc = y.binc || {};
   const biA  = BINC.reduce((s,k) => s + prs((binc[k]||{}).actual), 0);
   const spB  = SPE.reduce((s,k)  => s + prs(y.sp[k].budget), 0);
   const spA  = SPE.reduce((s,k)  => s + prs(y.sp[k].actual), 0);
 
-  // 年間総計（12ヶ月）
   let aIA=0, aFB=0, aFA=0, aVA=0;
   for(let m = 0; m < 12; m++){
     ensureMonth(m);
@@ -440,11 +505,10 @@ function renderSummary(){
     INC.forEach(k => { aIA += prs(ic[k].actual); });
     FIX.forEach(k => { aFB += prs(d[k].budget); aFA += prs(d[k].actual); });
     VAR.forEach(k => { aVA += prs(d[k].actual); });
+    (y.mo[m].free||[]).forEach(r => { aVA += prs(r.actual); });
   }
-  const aTA      = aFA + aVA;
-  const totalInc = aIA + biA;           // 月次収入＋特別収入
-  const totalExp = aTA + spA;           // 月次支出＋特別支出
-  const totalNet = totalInc - totalExp;
+  const aTA = aFA + aVA;
+  const totalInc = aIA + biA, totalExp = aTA + spA, totalNet = totalInc - totalExp;
 
   const V = v => v ? fmt(v) : '—';
   const D = (d, has) => has
@@ -455,27 +519,21 @@ function renderSummary(){
     <div class="scard">
       <h3>${MON[M]}　月次集計</h3>
       <div class="srow"><span class="sk">収入（実績）</span><span class="vv">${V(miA)}</span></div>
-      <div class="srow" style="border-top:1px solid #e2e8f0;margin-top:4px;padding-top:8px">
-        <span class="sk">固定費予算</span><span class="vv">${V(fB)}</span></div>
+      <div class="srow" style="border-top:1px solid #e2e8f0;margin-top:4px;padding-top:8px"><span class="sk">固定費予算</span><span class="vv">${V(fB)}</span></div>
       <div class="srow"><span class="sk">固定費実績</span><span class="vv ${fA>fB&&fB?'red':''}">${V(fA)}</span></div>
       <div class="srow"><span class="sk">変動費実績</span><span class="vv">${V(vA)}</span></div>
       <div class="srow"><span class="sk">支出合計（実績）</span><span class="vv">${V(tA)}</span></div>
-      <div class="srow" style="border-top:1px solid #e2e8f0;margin-top:4px;padding-top:8px">
-        <span class="sk b">収支差引（実績）</span>${D(mNet, miA||tA)}</div>
+      <div class="srow" style="border-top:1px solid #e2e8f0;margin-top:4px;padding-top:8px"><span class="sk b">収支差引（実績）</span>${D(mNet, miA||tA)}</div>
     </div>
-
     <div class="scard">
       <h3>年間累計（1〜${M+1}月）</h3>
       <div class="srow"><span class="sk">収入累計（実績）</span><span class="vv">${V(ycIA)}</span></div>
-      <div class="srow" style="border-top:1px solid #e2e8f0;margin-top:4px;padding-top:8px">
-        <span class="sk">固定費予算累計</span><span class="vv">${V(ycFB)}</span></div>
+      <div class="srow" style="border-top:1px solid #e2e8f0;margin-top:4px;padding-top:8px"><span class="sk">固定費予算累計</span><span class="vv">${V(ycFB)}</span></div>
       <div class="srow"><span class="sk">固定費実績累計</span><span class="vv">${V(ycFA)}</span></div>
       <div class="srow"><span class="sk">変動費実績累計</span><span class="vv">${V(ycVA)}</span></div>
       <div class="srow"><span class="sk">支出累計（実績）</span><span class="vv">${V(ycTA)}</span></div>
-      <div class="srow" style="border-top:1px solid #e2e8f0;margin-top:4px;padding-top:8px">
-        <span class="sk b">収支差引累計（実績）</span>${D(ycNet, ycIA||ycTA)}</div>
+      <div class="srow" style="border-top:1px solid #e2e8f0;margin-top:4px;padding-top:8px"><span class="sk b">収支差引累計（実績）</span>${D(ycNet, ycIA||ycTA)}</div>
     </div>
-
     <div class="scard">
       <h3>特別</h3>
       <div class="srow"><span class="sk">特別収入（実績）</span><span class="vv">${V(biA)}</span></div>
@@ -483,14 +541,12 @@ function renderSummary(){
       <div class="srow"><span class="sk">特別支出（実績）</span><span class="vv">${V(spA)}</span></div>
       <div class="srow"><span class="sk b">特別収支差引</span>${D(biA-spA, biA||spA)}</div>
     </div>
-
     <div class="scard">
       <h3>${Y}年　年間総まとめ</h3>
       <div class="srow"><span class="sk">月次収入合計</span><span class="vv">${V(aIA)}</span></div>
       <div class="srow"><span class="sk">特別収入合計</span><span class="vv">${V(biA)}</span></div>
       <div class="srow"><span class="sk b">収入合計</span><span class="vv big">${V(totalInc)}</span></div>
-      <div class="srow" style="border-top:1px solid #e2e8f0;margin-top:4px;padding-top:8px">
-        <span class="sk">月次支出合計（実績）</span><span class="vv">${V(aTA)}</span></div>
+      <div class="srow" style="border-top:1px solid #e2e8f0;margin-top:4px;padding-top:8px"><span class="sk">月次支出合計（実績）</span><span class="vv">${V(aTA)}</span></div>
       <div class="srow"><span class="sk">特別支出合計（実績）</span><span class="vv">${V(spA)}</span></div>
       <div class="srow"><span class="sk b">支出合計</span><span class="vv big">${V(totalExp)}</span></div>
       <div class="srow" style="border-top:1.5px solid #e2e8f0;padding-top:10px;margin-top:6px">
@@ -520,7 +576,6 @@ async function doSave(){
   showToast('保存しました ✓');
 }
 
-// ══ トースト ══
 let TT;
 function showToast(msg){
   const t = document.getElementById('toast');
@@ -528,7 +583,6 @@ function showToast(msg){
   clearTimeout(TT); TT = setTimeout(() => t.classList.remove('show'), 2200);
 }
 
-// ══ インストール案内 ══
 function closeInst(){
   document.getElementById('instbanner').classList.remove('show');
   try{ localStorage.setItem('inst-done','1'); }catch{}
@@ -540,7 +594,6 @@ function maybeShowInst(){
   if(isIOS && !isSA && !done) setTimeout(() => document.getElementById('instbanner').classList.add('show'), 1800);
 }
 
-// ══ 起動 ══
 (async () => {
   DB = await load();
   renderAll();
