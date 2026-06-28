@@ -7,6 +7,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="家計簿">
 <meta name="theme-color" content="#1a3a5c">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>家計簿</title>
 <style>
 :root{
@@ -66,6 +69,9 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,'Hiragino S
 .ni::placeholder{color:#dde2ea}
 .ni-auto{color:var(--navy2)!important;font-weight:600!important;background:#f0f6ff!important;border-radius:4px;}
 .lbl-input{border-bottom:1px dashed var(--bdr);}
+.memo-input{width:100%;border:none;outline:none;font-family:inherit;font-size:13px;color:var(--t1);background:transparent;padding:12px 4px;border-bottom:1px solid #f1f5f9;display:block;}
+.memo-input:last-child{border-bottom:none;}
+.memo-input::placeholder{color:#dde2ea;}
 .ni:focus{background:#f8fafc;border-radius:4px}
 
 /* 小計フッター */
@@ -185,7 +191,8 @@ function emptyYear(){
     const free = [];
     for(let i=0;i<FREE_COUNT;i++) free.push({label:"", actual:""});
     const inc = {}; INC.forEach(k => inc[k] = {actual:""});
-    mo[m] = {d, inc, free};
+    const memo = ['','','']; // メモ3行
+    mo[m] = {d, inc, free, memo};
   }
   const sp   = {}; SPE.forEach(k  => sp[k]   = {budget:"", actual:""});
   const binc = {}; BINC.forEach(k => binc[k] = {actual:""});
@@ -208,6 +215,9 @@ function ensureMonth(m){
   // 自由入力行の補完
   if(!y.mo[m].free) y.mo[m].free = [];
   while(y.mo[m].free.length < FREE_COUNT) y.mo[m].free.push({label:"", actual:""});
+  // メモ補完
+  if(!y.mo[m].memo) y.mo[m].memo = ['','',''];
+  while(y.mo[m].memo.length < 3) y.mo[m].memo.push('');
 }
 
 // カード実績を自動計算して保存
@@ -252,6 +262,10 @@ function onNI(el){
 }
 // テキスト入力ハンドラ（自由入力項目名）
 function onTI(el){
+  const f = CB[el.dataset.cb]; if(f) f(el.value);
+}
+// メモ入力ハンドラ
+function onMemo(el){
   const f = CB[el.dataset.cb]; if(f) f(el.value);
 }
 
@@ -369,7 +383,18 @@ function renderMonthly(){
       <div class="g2 strow"><span class="sl">小計</span><span class="sv">${vA ? fmt(vA) : '—'}</span></div>
     </div>
 
-    <div class="mtcard" id="mtcard">${mtHTML(iA, fB, tA)}</div>`;
+    <div class="mtcard" id="mtcard">${mtHTML(iA, fB, tA)}</div>
+
+    <div class="sec-title" style="margin-top:16px">メモ</div>
+    ${memoHTML(y.mo[M].memo)}`;
+}
+
+function memoHTML(memoArr){
+  const rows = memoArr.map((txt, i) => {
+    const cb = reg(v => { ensureMonth(M); yd().mo[M].memo[i] = v; });
+    return '<input class="memo-input" type="text" value="'+txt+'" placeholder="メモ '+(i+1)+'" data-cb="'+cb+'" oninput="onMemo(this)">';
+  }).join('');
+  return '<div class="card" style="padding:10px">'+rows+'</div>';
 }
 
 function updCardRow(){
