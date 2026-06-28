@@ -474,17 +474,19 @@ function renderSpecial(){
 function renderSummary(){
   const y = yd();
 
-  // 固定費を月別に集計（12ヶ月）
-  const monthRows = MON.map((mName, m) => {
-    ensureMonth(m);
-    const d = y.mo[m].d;
-    const bud = FIX.reduce((s,k) => s + prs(d[k].budget), 0);
-    const act = FIX.reduce((s,k) => s + prs(d[k].actual), 0);
+  // 固定費：項目ごとに12ヶ月合計
+  const fixRows = FIX.map(k => {
+    let bud=0, act=0;
+    for(let m=0;m<12;m++){
+      ensureMonth(m);
+      bud += prs(y.mo[m].d[k].budget);
+      act += prs(y.mo[m].d[k].actual);
+    }
     const over = act > bud && bud > 0;
     return `<div class="g3 dr">
-      <div class="lbl">${mName}</div>
-      <span style="text-align:right;font-size:13px;font-weight:600;padding:10px 0;">${bud ? fmt(bud) : '—'}</span>
-      <span style="text-align:right;font-size:13px;font-weight:600;padding:10px 0;${over?'color:var(--red)':''}">${act ? fmt(act) : '—'}</span>
+      <div class="lbl">${k}</div>
+      <span style="text-align:right;font-size:13px;padding:10px 0;">${bud?fmt(bud):'—'}</span>
+      <span style="text-align:right;font-size:13px;${over?'color:var(--red);font-weight:700;':''};padding:10px 0;">${act?fmt(act):'—'}</span>
     </div>`;
   }).join('');
 
@@ -492,41 +494,40 @@ function renderSummary(){
   let fixBudTotal=0, fixActTotal=0;
   for(let m=0;m<12;m++){
     ensureMonth(m);
-    const d=y.mo[m].d;
-    FIX.forEach(k=>{ fixBudTotal+=prs(d[k].budget); fixActTotal+=prs(d[k].actual); });
+    FIX.forEach(k=>{ fixBudTotal+=prs(y.mo[m].d[k].budget); fixActTotal+=prs(y.mo[m].d[k].actual); });
   }
 
   // 特別
-  const binc = y.binc || {};
-  const biA  = BINC.reduce((s,k) => s + prs((binc[k]||{}).actual), 0);
-  const spB  = SPE.reduce((s,k)  => s + prs(y.sp[k].budget), 0);
-  const spA  = SPE.reduce((s,k)  => s + prs(y.sp[k].actual), 0);
+  const binc = y.binc||{};
+  const biA  = BINC.reduce((s,k)=>s+prs((binc[k]||{}).actual),0);
+  const spB  = SPE.reduce((s,k)=>s+prs(y.sp[k].budget),0);
+  const spA  = SPE.reduce((s,k)=>s+prs(y.sp[k].actual),0);
 
-  // 年間総計（12ヶ月）
-  let aIA=0, aFA=0, aVA=0;
+  // 年間総計
+  let aIA=0,aFA=0,aVA=0;
   for(let m=0;m<12;m++){
     ensureMonth(m);
-    const d=y.mo[m].d, ic=y.mo[m].inc;
-    INC.forEach(k=>{ aIA+=prs(ic[k].actual); });
-    FIX.forEach(k=>{ aFA+=prs(d[k].actual); });
-    VAR.forEach(k=>{ aVA+=prs(d[k].actual); });
-    (y.mo[m].free||[]).forEach(r=>{ aVA+=prs(r.actual); });
+    const d=y.mo[m].d,ic=y.mo[m].inc;
+    INC.forEach(k=>{aIA+=prs(ic[k].actual);});
+    FIX.forEach(k=>{aFA+=prs(d[k].actual);});
+    VAR.forEach(k=>{aVA+=prs(d[k].actual);});
+    (y.mo[m].free||[]).forEach(r=>{aVA+=prs(r.actual);});
   }
   const aTA=aFA+aVA;
-  const totalInc=aIA+biA, totalExp=aTA+spA, totalNet=totalInc-totalExp;
+  const totalInc=aIA+biA,totalExp=aTA+spA,totalNet=totalInc-totalExp;
 
   const V=v=>v?fmt(v):'—';
   const D=(d,has)=>has
     ?`<span class="vv ${d>=0?'grn':'red'}">${d>=0?'+':''}${fmt(d)}</span>`
     :`<span class="vv">—</span>`;
 
-  return `
-    <div class="sec-title">固定費　月別集計</div>
+  return`
+    <div class="sec-title">固定費　項目別年間集計</div>
     <div class="card">
-      <div class="g3 th"><div>月</div><div>予算</div><div>実績</div></div>
-      ${monthRows}
+      <div class="g3 th"><div>項目</div><div>予算計</div><div>実績計</div></div>
+      ${fixRows}
       <div class="g3 strow">
-        <span class="sl">年間合計</span>
+        <span class="sl">合計</span>
         <span class="sv">${fixBudTotal?fmt(fixBudTotal):'—'}</span>
         <span class="sv ${fixActTotal>fixBudTotal&&fixBudTotal?'over':''}">${fixActTotal?fmt(fixActTotal):'—'}</span>
       </div>
