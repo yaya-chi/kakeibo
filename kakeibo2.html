@@ -156,7 +156,7 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,'Hiragino S
 <script>
 // ══ 定数 ══
 const INC  = ["給与","児童手当","ちぃちゃん"];
-const FIX  = ["住宅ローン","車ローン","教育ローン","電気代","水道代","ガソリン代","携帯代","光回線","保険代","コープ共済","コープ商品代","サブスク","生活費","塾代","保育料","習い事","警備代"];
+const FIX  = ["住宅ローン","車ローン","教育ローン","電気代","水道代","ガソリン代","携帯代","光回線","保険代","コープ共済","コープ商品代","サブスク","生活費","香小遣い","晴小遣い","塾代","保育料","習い事","警備代"];
 const VAR  = ["カード支払い","外食費","その他"];
 const FREE_COUNT = 3; // 自由入力行数
 const SPE  = ["固定資産税","自動車税","車保険","住宅ローン（ボーナス）","車ローン（ボーナス）","教育ローン（ボーナス）"];
@@ -473,85 +473,86 @@ function renderSpecial(){
 // ══ 集計タブ ══
 function renderSummary(){
   const y = yd();
-  ensureMonth(M);
-  const inc = y.mo[M].inc, md = y.mo[M].d;
-  const miA = INC.reduce((s,k) => s + prs(inc[k].actual), 0);
-  const fB  = FIX.reduce((s,k) => s + prs(md[k].budget), 0);
-  const fA  = FIX.reduce((s,k) => s + prs(md[k].actual), 0);
-  const vA  = VAR.reduce((s,k) => s + prs(md[k].actual), 0);
-  const tA  = fA + vA;
-  const mNet = miA - tA;
 
-  let ycIA=0, ycFB=0, ycFA=0, ycVA=0;
-  for(let m = 0; m <= M; m++){
+  // 固定費を月別に集計（12ヶ月）
+  const monthRows = MON.map((mName, m) => {
     ensureMonth(m);
-    const d = y.mo[m].d, ic = y.mo[m].inc;
-    INC.forEach(k => { ycIA += prs(ic[k].actual); });
-    FIX.forEach(k => { ycFB += prs(d[k].budget); ycFA += prs(d[k].actual); });
-    VAR.forEach(k => { ycVA += prs(d[k].actual); });
-    (y.mo[m].free||[]).forEach(r => { ycVA += prs(r.actual); });
-  }
-  const ycTA = ycFA + ycVA, ycNet = ycIA - ycTA;
+    const d = y.mo[m].d;
+    const bud = FIX.reduce((s,k) => s + prs(d[k].budget), 0);
+    const act = FIX.reduce((s,k) => s + prs(d[k].actual), 0);
+    const over = act > bud && bud > 0;
+    return `<div class="g3 dr">
+      <div class="lbl">${mName}</div>
+      <span style="text-align:right;font-size:13px;font-weight:600;padding:10px 0;">${bud ? fmt(bud) : '—'}</span>
+      <span style="text-align:right;font-size:13px;font-weight:600;padding:10px 0;${over?'color:var(--red)':''}">${act ? fmt(act) : '—'}</span>
+    </div>`;
+  }).join('');
 
+  // 固定費年間合計
+  let fixBudTotal=0, fixActTotal=0;
+  for(let m=0;m<12;m++){
+    ensureMonth(m);
+    const d=y.mo[m].d;
+    FIX.forEach(k=>{ fixBudTotal+=prs(d[k].budget); fixActTotal+=prs(d[k].actual); });
+  }
+
+  // 特別
   const binc = y.binc || {};
   const biA  = BINC.reduce((s,k) => s + prs((binc[k]||{}).actual), 0);
   const spB  = SPE.reduce((s,k)  => s + prs(y.sp[k].budget), 0);
   const spA  = SPE.reduce((s,k)  => s + prs(y.sp[k].actual), 0);
 
-  let aIA=0, aFB=0, aFA=0, aVA=0;
-  for(let m = 0; m < 12; m++){
+  // 年間総計（12ヶ月）
+  let aIA=0, aFA=0, aVA=0;
+  for(let m=0;m<12;m++){
     ensureMonth(m);
-    const d = y.mo[m].d, ic = y.mo[m].inc;
-    INC.forEach(k => { aIA += prs(ic[k].actual); });
-    FIX.forEach(k => { aFB += prs(d[k].budget); aFA += prs(d[k].actual); });
-    VAR.forEach(k => { aVA += prs(d[k].actual); });
-    (y.mo[m].free||[]).forEach(r => { aVA += prs(r.actual); });
+    const d=y.mo[m].d, ic=y.mo[m].inc;
+    INC.forEach(k=>{ aIA+=prs(ic[k].actual); });
+    FIX.forEach(k=>{ aFA+=prs(d[k].actual); });
+    VAR.forEach(k=>{ aVA+=prs(d[k].actual); });
+    (y.mo[m].free||[]).forEach(r=>{ aVA+=prs(r.actual); });
   }
-  const aTA = aFA + aVA;
-  const totalInc = aIA + biA, totalExp = aTA + spA, totalNet = totalInc - totalExp;
+  const aTA=aFA+aVA;
+  const totalInc=aIA+biA, totalExp=aTA+spA, totalNet=totalInc-totalExp;
 
-  const V = v => v ? fmt(v) : '—';
-  const D = (d, has) => has
-    ? `<span class="vv ${d>=0?'grn':'red'}">${d>=0?'+':''}${fmt(d)}</span>`
-    : `<span class="vv">—</span>`;
+  const V=v=>v?fmt(v):'—';
+  const D=(d,has)=>has
+    ?`<span class="vv ${d>=0?'grn':'red'}">${d>=0?'+':''}${fmt(d)}</span>`
+    :`<span class="vv">—</span>`;
 
   return `
-    <div class="scard">
-      <h3>${MON[M]}　月次集計</h3>
-      <div class="srow"><span class="sk">収入（実績）</span><span class="vv">${V(miA)}</span></div>
-      <div class="srow" style="border-top:1px solid #e2e8f0;margin-top:4px;padding-top:8px"><span class="sk">固定費予算</span><span class="vv">${V(fB)}</span></div>
-      <div class="srow"><span class="sk">固定費実績</span><span class="vv ${fA>fB&&fB?'red':''}">${V(fA)}</span></div>
-      <div class="srow"><span class="sk">変動費実績</span><span class="vv">${V(vA)}</span></div>
-      <div class="srow"><span class="sk">支出合計（実績）</span><span class="vv">${V(tA)}</span></div>
-      <div class="srow" style="border-top:1px solid #e2e8f0;margin-top:4px;padding-top:8px"><span class="sk b">収支差引（実績）</span>${D(mNet, miA||tA)}</div>
+    <div class="sec-title">固定費　月別集計</div>
+    <div class="card">
+      <div class="g3 th"><div>月</div><div>予算</div><div>実績</div></div>
+      ${monthRows}
+      <div class="g3 strow">
+        <span class="sl">年間合計</span>
+        <span class="sv">${fixBudTotal?fmt(fixBudTotal):'—'}</span>
+        <span class="sv ${fixActTotal>fixBudTotal&&fixBudTotal?'over':''}">${fixActTotal?fmt(fixActTotal):'—'}</span>
+      </div>
     </div>
-    <div class="scard">
-      <h3>年間累計（1〜${M+1}月）</h3>
-      <div class="srow"><span class="sk">収入累計（実績）</span><span class="vv">${V(ycIA)}</span></div>
-      <div class="srow" style="border-top:1px solid #e2e8f0;margin-top:4px;padding-top:8px"><span class="sk">固定費予算累計</span><span class="vv">${V(ycFB)}</span></div>
-      <div class="srow"><span class="sk">固定費実績累計</span><span class="vv">${V(ycFA)}</span></div>
-      <div class="srow"><span class="sk">変動費実績累計</span><span class="vv">${V(ycVA)}</span></div>
-      <div class="srow"><span class="sk">支出累計（実績）</span><span class="vv">${V(ycTA)}</span></div>
-      <div class="srow" style="border-top:1px solid #e2e8f0;margin-top:4px;padding-top:8px"><span class="sk b">収支差引累計（実績）</span>${D(ycNet, ycIA||ycTA)}</div>
-    </div>
-    <div class="scard">
+
+    <div class="scard" style="margin-top:10px">
       <h3>特別</h3>
       <div class="srow"><span class="sk">特別収入（実績）</span><span class="vv">${V(biA)}</span></div>
       <div class="srow"><span class="sk">特別支出（予算）</span><span class="vv">${V(spB)}</span></div>
       <div class="srow"><span class="sk">特別支出（実績）</span><span class="vv">${V(spA)}</span></div>
-      <div class="srow"><span class="sk b">特別収支差引</span>${D(biA-spA, biA||spA)}</div>
+      <div class="srow"><span class="sk b">特別収支差引</span>${D(biA-spA,biA||spA)}</div>
     </div>
+
     <div class="scard">
       <h3>${Y}年　年間総まとめ</h3>
       <div class="srow"><span class="sk">月次収入合計</span><span class="vv">${V(aIA)}</span></div>
       <div class="srow"><span class="sk">特別収入合計</span><span class="vv">${V(biA)}</span></div>
       <div class="srow"><span class="sk b">収入合計</span><span class="vv big">${V(totalInc)}</span></div>
-      <div class="srow" style="border-top:1px solid #e2e8f0;margin-top:4px;padding-top:8px"><span class="sk">月次支出合計（実績）</span><span class="vv">${V(aTA)}</span></div>
+      <div class="srow" style="border-top:1px solid #e2e8f0;margin-top:4px;padding-top:8px">
+        <span class="sk">月次支出合計（実績）</span><span class="vv">${V(aTA)}</span></div>
       <div class="srow"><span class="sk">特別支出合計（実績）</span><span class="vv">${V(spA)}</span></div>
       <div class="srow"><span class="sk b">支出合計</span><span class="vv big">${V(totalExp)}</span></div>
       <div class="srow" style="border-top:1.5px solid #e2e8f0;padding-top:10px;margin-top:6px">
         <span class="sk b">年間収支差引</span>
-        <span class="vv big ${totalNet>=0?'grn':'red'}">${(totalInc||totalExp)?(totalNet>=0?'+':'')+fmt(totalNet):'—'}</span></div>
+        <span class="vv big ${totalNet>=0?'grn':'red'}">${(totalInc||totalExp)?(totalNet>=0?'+':'')+fmt(totalNet):'—'}</span>
+      </div>
     </div>`;
 }
 
